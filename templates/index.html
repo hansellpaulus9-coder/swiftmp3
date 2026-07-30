@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FastMP3 - Free Music Downloads</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #f4f7fb; color: #222; }
+    .top-ad { max-width: 900px; margin: 16px auto; padding: 12px; text-align: center; border: 1px dashed #90a4ae; background: #eef2f7; color: #546e7a; }
+    .container { max-width: 900px; margin: 20px auto; background: white; border-radius: 16px; padding: 24px; box-shadow: 0 8px 24px rgba(0,0,0,.08); }
+    h1 { margin-top: 0; color: #1565c0; }
+    .search-box { display: flex; gap: 10px; margin-top: 16px; }
+    input[type="text"] { flex: 1; padding: 12px; border: 1px solid #cfd8dc; border-radius: 8px; }
+    button { padding: 12px 16px; border: none; border-radius: 8px; background: #1976d2; color: white; cursor: pointer; }
+    .results { margin-top: 20px; }
+    .track { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #eceff1; }
+    .download-btn { background: #2e7d32; }
+    .loading { color: #607d8b; margin-top: 12px; }
+    .small { color: #78909c; font-size: 0.95rem; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="top-ad">ADVERTISEMENT SPACE - Put your AdSense/affiliate banner here</div>
+
+  <div class="container">
+    <h1>FastMP3</h1>
+    <p>Search YouTube and download MP3 audio quickly.</p>
+
+    <div class="search-box">
+      <input id="query" type="text" placeholder="Enter song name or artist" />
+      <button onclick="searchMusic()">Search</button>
+    </div>
+
+    <div id="loading" class="loading" style="display:none;">Searching...</div>
+    <div id="results" class="results"></div>
+
+  </div>
+
+  <div class="top-ad">ADVERTISEMENT SPACE - Put your AdSense/affiliate banner here</div>
+
+  <script>
+    async function searchMusic() {
+      const query = document.getElementById('query').value.trim();
+      if (!query) return alert('Enter a song name first.');
+      document.getElementById('loading').style.display = 'block';
+      document.getElementById('results').innerHTML = '';
+
+      const response = await fetch('/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query })
+      });
+      const data = await response.json();
+      document.getElementById('loading').style.display = 'none';
+
+      if (data.error) return alert(data.error);
+      if (!data.length) return alert('No results found.');
+
+      const results = document.getElementById('results');
+      data.forEach(track => {
+        const div = document.createElement('div');
+        div.className = 'track';
+        div.innerHTML = `
+          <div>
+            <strong>${track.title}</strong><br>
+            <span class="small">Duration: ${track.duration}</span>
+          </div>
+          <button class="download-btn" onclick="window.location.href='/download?id=${track.id}&title=${encodeURIComponent(track.title)}'">Download MP3</button>
+        `;
+        results.appendChild(div);
+      });
+    }
+  </script>
+</body>
+</html>

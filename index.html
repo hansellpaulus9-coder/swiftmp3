@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SwiftMP3 - Fast Free Music Downloader</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f7f6; text-align: center; padding: 20px; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0px 4px 15px rgba(0,0,0,0.05); }
+        .ad-container { background: #eef2f3; height: 90px; max-width: 728px; margin: 20px auto; display: flex; align-items: center; justify-content: center; border: 1px dashed #cfd8dc; border-radius: 4px; color: #90a4ae; font-size: 13px; letter-spacing: 1px; font-weight: bold; }
+        input[type="text"] { width: 70%; padding: 12px; margin-right: 5px; border: 1px solid #cfd8dc; border-radius: 6px; outline: none; font-size: 14px; }
+        input[type="text"]:focus { border-color: #007bff; }
+        button { padding: 12px 20px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 14px; }
+        button:hover { background: #0056b3; }
+        .results { margin-top: 25px; text-align: left; }
+        .track { padding: 15px; border-bottom: 1px solid #eceff1; display: flex; justify-content: space-between; align-items: center; background: #fff; margin-bottom: 8px; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+        .download-btn { background: #28a745; text-decoration: none; padding: 8px 16px; color: white; border-radius: 6px; font-size: 14px; font-weight: bold; transition: background 0.2s; }
+        .download-btn:hover { background: #218838; }
+        #loading { display: none; margin-top: 15px; color: #546e7a; font-style: italic; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="ad-container">ADVERTISEMENT SPACE</div>
+    <div class="container">
+        <h2 style="color: #007bff; margin-bottom: 5px;">⚡ SwiftMP3</h2>
+        <p style="color: #607d8b; margin-top: 0;">High-speed search and instant music downloads</p>
+
+        <div style="display: flex; justify-content: center; align-items: center;">
+            <input type="text" id="searchQuery" placeholder="Enter song name or artist...">
+            <button onclick="searchMusic()">Search</button>
+        </div>
+
+        <div id="loading">🔍 Searching for tracks... Please wait...</div>
+        <div class="results" id="resultsContainer"></div>
+    </div>
+    <div class="ad-container">ADVERTISEMENT SPACE</div>
+
+    <script>
+        function searchMusic() {
+            const query = document.getElementById('searchQuery').value;
+            if (!query) return alert("Please type a song name first!");
+
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('resultsContainer').innerHTML = '';
+
+            fetch('/search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: query })
+            })
+            .then(res => res.json())
+            .then(tracks => {
+                document.getElementById('loading').style.display = 'none';
+                if (tracks.error) return alert(tracks.error);
+                if (tracks.length === 0) return alert("No songs found!");
+
+                tracks.forEach(track => {
+                    const div = document.createElement('div');
+                    div.className = 'track';
+                    div.innerHTML = `
+                        <div>
+                            <strong style="color: #2c3e50;">${track.title}</strong><br>
+                            <small style="color: #7f8c8d;">Duration: ${track.duration}</small>
+                        </div>
+                        <button onclick="downloadTrack('${track.id}', '${encodeURIComponent(track.title)}')" class="download-btn">Download MP3</button>
+                    `;
+                    document.getElementById('resultsContainer').appendChild(div);
+                });
+            })
+            .catch(() => {
+                document.getElementById('loading').style.display = 'none';
+                alert("Could not connect to server.");
+            });
+        }
+
+        function downloadTrack(id, title) {
+            alert("Download started! Checking downloads folder...");
+            window.location.href = `/download?id=${id}&title=${title}`;
+        }
+    </script>
+</body>
+</html>
+
