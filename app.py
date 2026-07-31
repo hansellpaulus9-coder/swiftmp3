@@ -5,6 +5,9 @@ import re
 
 app = Flask(__name__, template_folder='templates')
 
+# Check if a cookie file exists to use for YouTube requests
+COOKIE_FILE = 'cookies.txt' if os.path.exists('cookies.txt') else None
+
 @app.route('/')
 def home():
     return render_template('index.html')
@@ -21,6 +24,10 @@ def search_tracks():
         'default_search': 'ytsearch5',
         'skip_download': True,
     }
+    
+    # Securely apply cookie authentication if available
+    if COOKIE_FILE:
+        ydl_opts['cookiefile'] = COOKIE_FILE
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -65,6 +72,10 @@ def download_track():
             'preferredquality': '192',
         }],
     }
+    
+    # Securely apply cookie authentication if available
+    if COOKIE_FILE:
+        ydl_opts['cookiefile'] = COOKIE_FILE
 
     video_url = video_id if video_id.startswith("http") else f"https://www.youtube.com/watch?v={video_id}"
 
@@ -86,3 +97,4 @@ if __name__ == '__main__':
     if not os.path.exists('downloads'):
         os.makedirs('downloads')
     app.run(host='0.0.0.0', port=5000, debug=False)
+
