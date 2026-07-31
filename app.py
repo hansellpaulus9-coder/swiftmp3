@@ -6,7 +6,7 @@ import re
 app = Flask(__name__, template_folder='templates')
 
 # Check if a cookie file exists to use for YouTube requests
-COOKIE_FILE = 'cookies.txt' if os.path.exists('cookies.txt') else None
+COOKIE_FILE = 'cookies.txt.txt' if os.path.exists('cookies.txt.txt') else None
 
 @app.route('/')
 def home():
