@@ -5,9 +5,6 @@ import re
 
 app = Flask(__name__, template_folder='templates')
 
-# Check if a cookie file exists to use for YouTube requests
-COOKIE_FILE = 'cookies.txt.txt' if os.path.exists('cookies.txt.txt') else None
-
 @app.route('/')
 def home():
     return render_template('index.html')
@@ -20,14 +17,11 @@ def search_tracks():
     if not query:
         return jsonify({'error': 'Search query is empty'}), 400
 
+    # Switched search index to SoundCloud to bypass YouTube's aggressive bot locks
     ydl_opts = {
-        'default_search': 'ytsearch5',
+        'default_search': 'scsearch5',
         'skip_download': True,
     }
-    
-    # Securely apply cookie authentication if available
-    if COOKIE_FILE:
-        ydl_opts['cookiefile'] = COOKIE_FILE
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -38,12 +32,15 @@ def search_tracks():
                 for entry in info['entries']:
                     if entry:
                         duration_sec = entry.get('duration', 0)
-                        minutes = duration_sec // 60
-                        seconds = duration_sec % 60
-                        duration_str = f"{minutes}:{seconds:02d}"
+                        if duration_sec:
+                            minutes = duration_sec // 60
+                            seconds = duration_sec % 60
+                            duration_str = f"{minutes}:{seconds:02d}"
+                        else:
+                            duration_str = "Live/Unknown"
 
                         tracks.append({
-                            'id': entry.get('id'),
+                            'id': entry.get('webpage_url') or entry.get('id'),
                             'title': entry.get('title'),
                             'duration': duration_str
                         })
@@ -54,11 +51,11 @@ def search_tracks():
 
 @app.route('/download', methods=['GET'])
 def download_track():
-    video_id = request.args.get('id')
+    track_id = request.args.get('id')
     title = request.args.get('title', 'audio')
 
-    if not video_id:
-        return "Missing video ID", 400
+    if not track_id:
+        return "Missing track ID", 400
 
     clean_title = re.sub(r'[\\/*?:"<>|]', '', title)
     output_filename = f"{clean_title}.mp3"
@@ -72,16 +69,13 @@ def download_track():
             'preferredquality': '192',
         }],
     }
-    
-    # Securely apply cookie authentication if available
-    if COOKIE_FILE:
-        ydl_opts['cookiefile'] = COOKIE_FILE
 
-    video_url = video_id if video_id.startswith("http") else f"https://www.youtube.com/watch?v={video_id}"
+    # Automatically handle direct URLs or fallback track strings
+    track_url = track_id if track_id.startswith("http") else f"https://soundcloud.com{track_id}"
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(video_url, download=True)
+            info = ydl.extract_info(track_url, download=True)
             downloaded_file = ydl.prepare_filename(info)
             base, ext = os.path.splitext(downloaded_file)
             mp3_file = base + '.mp3'
