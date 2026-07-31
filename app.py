@@ -17,7 +17,6 @@ def search_tracks():
     if not query:
         return jsonify({'error': 'Search query is empty'}), 400
 
-    # Switched search index to SoundCloud to bypass YouTube's aggressive bot locks
     ydl_opts = {
         'default_search': 'scsearch5',
         'skip_download': True,
@@ -33,11 +32,13 @@ def search_tracks():
                     if entry:
                         duration_sec = entry.get('duration', 0)
                         if duration_sec:
-                            minutes = duration_sec // 60
-                            seconds = duration_sec % 60
+                            # Safely convert to a whole number integer to prevent the float formatting error
+                            total_seconds = int(float(duration_sec))
+                            minutes = total_seconds // 60
+                            seconds = total_seconds % 60
                             duration_str = f"{minutes}:{seconds:02d}"
                         else:
-                            duration_str = "Live/Unknown"
+                            duration_str = "Unknown"
 
                         tracks.append({
                             'id': entry.get('webpage_url') or entry.get('id'),
@@ -70,7 +71,6 @@ def download_track():
         }],
     }
 
-    # Automatically handle direct URLs or fallback track strings
     track_url = track_id if track_id.startswith("http") else f"https://soundcloud.com{track_id}"
 
     try:
