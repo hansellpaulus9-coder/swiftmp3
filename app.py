@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, send_file, render_template
 import yt_dlp
 import os
 import re
+import imageio_ffmpeg
 
 app = Flask(__name__, template_folder='templates')
 
@@ -32,7 +33,6 @@ def search_tracks():
                     if entry:
                         duration_sec = entry.get('duration', 0)
                         if duration_sec:
-                            # Safely convert to a whole number integer to prevent the float formatting error
                             total_seconds = int(float(duration_sec))
                             minutes = total_seconds // 60
                             seconds = total_seconds % 60
@@ -61,9 +61,13 @@ def download_track():
     clean_title = re.sub(r'[\\/*?:"<>|]', '', title)
     output_filename = f"{clean_title}.mp3"
 
+    # Setup the converter location cleanly using the official package path method
+    ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': 'downloads/%(title)s.%(ext)s',
+        'ffmpeg_location': ffmpeg_exe,
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',

@@ -3,3 +3,4 @@ yt-dlp>=2023.12.01
 werkzeug>=2.0
 requests>=2.0
 gunicorn>=21.0.0
+imageio-ffmpeg
