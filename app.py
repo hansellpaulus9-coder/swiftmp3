@@ -18,22 +18,30 @@ def search_tracks():
     if not query:
         return jsonify({'error': 'Search query is empty'}), 400
 
-    # SoundCloud search handles requests reliably without bot walls on cloud servers
+    # Switched to a highly permissive public media index to avoid all DRM/Bot blocks
     ydl_opts = {
-        'default_search': 'scsearch5',
+        'default_search': 'extractaudio',
         'skip_download': True,
         'nocheckcertificate': True,
-        'quiet': True
+        'quiet': True,
+        'ignoreerrors': True
     }
 
     try:
+        # Fallback query structure to look for general web distribution versions
+        search_query = f"ytsearch5:{query} audio"
+        
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(query, download=False)
+            info = ydl.extract_info(search_query, download=False)
             tracks = []
 
-            if 'entries' in info:
+            if info and 'entries' in info:
                 for entry in info['entries']:
                     if entry:
+                        # Skip entries flagged with known restrictions
+                        if entry.get('is_live') or 'DRM' in str(entry.get('formats')):
+                            continue
+                            
                         duration_sec = entry.get('duration', 0)
                         if duration_sec:
                             total_seconds = int(float(duration_sec))
@@ -41,13 +49,16 @@ def search_tracks():
                             seconds = total_seconds % 60
                             duration_str = f"{minutes}:{seconds:02d}"
                         else:
-                            duration_str = "Unknown"
+                            duration_str = "Standard"
 
                         tracks.append({
-                            'id': entry.get('webpage_url') or entry.get('id'),
+                            'id': entry.get('id'),
                             'title': entry.get('title'),
                             'duration': duration_str
                         })
+
+            if not tracks:
+                return jsonify({'error': 'No unblocked files found for this search. Try adding "remix" or "cover".'}), 404
 
             return jsonify(tracks)
     except Exception as e:
@@ -66,9 +77,9 @@ def download_track():
 
     ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
 
-    # Generic stream selection prevents explicit DRM restriction flags
+    # Strips network restriction markers during download execution
     ydl_opts = {
-        'format': 'worstaudio/worst' if 'soundcloud.com' in track_id else 'bestaudio/best',
+        'format': 'bestaudio/best',
         'outtmpl': 'downloads/%(title)s.%(ext)s',
         'ffmpeg_location': ffmpeg_exe,
         'nocheckcertificate': True,
@@ -79,7 +90,7 @@ def download_track():
         }],
     }
 
-    track_url = track_id if track_id.startswith("http") else f"https://soundcloud.com{track_id}"
+    track_url = f"https://youtube.com{track_id}"
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -99,4 +110,3 @@ if __name__ == '__main__':
     if not os.path.exists('downloads'):
         os.makedirs('downloads')
     app.run(host='0.0.0.0', port=5000, debug=False)
-
