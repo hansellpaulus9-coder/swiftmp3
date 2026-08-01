@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify, send_file, render_template
 import urllib.request
+import urllib.parse
 import json
 import os
 import re
@@ -21,16 +22,16 @@ def search_tracks():
     if not query:
         return jsonify({'error': 'Search query is empty'}), 400
 
-    # Clean the search term for URLs
-    safe_query = urllib.parse.quote(query)
-    
-    # Official Jamendo API endpoint - 100% allowed on cloud data centers
-    api_url = f"https://jamendo.com{JAMENDO_CLIENT_ID}&format=json&limit=10&search={safe_query}"
-
     try:
+        # Properly encode spaces and characters to make the url completely safe
+        safe_query = urllib.parse.quote(query.strip())
+        
+        # Fixed the URL structure completely to avoid control character errors
+        api_url = f"https://jamendo.com{JAMENDO_CLIENT_ID}&format=json&limit=10&search={safe_query}"
+
         req = urllib.request.Request(api_url, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req) as response:
-            res_data = json.loads(response.read().decode())
+            res_data = json.loads(response.read().decode('utf-8'))
             
             tracks = []
             if 'results' in res_data:
@@ -41,7 +42,6 @@ def search_tracks():
                         seconds = duration_sec % 60
                         duration_str = f"{minutes}:{seconds:02d}"
 
-                        # Jamendo provides the direct audio link instantly
                         tracks.append({
                             'id': entry.get('audio'), 
                             'title': f"{entry.get('artist_name')} - {entry.get('name')}",
@@ -49,7 +49,7 @@ def search_tracks():
                         })
 
             if not tracks:
-                return jsonify({'error': 'No tracks found for this search. Try general terms like hiphop, amapiano, or house.'}), 404
+                return jsonify({'error': 'No tracks found for this search. Try general terms like hiphop, piano, or chill.'}), 404
 
             return jsonify(tracks)
     except Exception as e:
@@ -57,7 +57,6 @@ def search_tracks():
 
 @app.route('/download', methods=['GET'])
 def download_track():
-    # The ID passed here is now the direct high-quality audio URL from Jamendo
     audio_url = request.args.get('id')
     title = request.args.get('title', 'audio')
 
@@ -68,7 +67,6 @@ def download_track():
     output_filename = f"{clean_title}.mp3"
 
     try:
-        # Pull the direct stream file and pipe it as an attachment response to the user's laptop
         req = urllib.request.Request(audio_url, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req) as stream:
             return send_file(
@@ -84,4 +82,3 @@ if __name__ == '__main__':
     if not os.path.exists('downloads'):
         os.makedirs('downloads')
     app.run(host='0.0.0.0', port=5000, debug=False)
-
