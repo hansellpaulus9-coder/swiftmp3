@@ -7,9 +7,6 @@ import re
 
 app = Flask(__name__, template_folder='templates')
 
-# Official developer client ID for stable, unblocked requests
-JAMENDO_CLIENT_ID = '56d30c95'
-
 @app.route('/')
 def home():
     return render_template('index.html')
@@ -23,37 +20,44 @@ def search_tracks():
         return jsonify({'error': 'Search query is empty'}), 400
 
     try:
-        # Securely parse spaces and characters into safe web entities
+        # Securely parse the artist or song name for the web link
         safe_query = urllib.parse.quote(query.strip())
         
-        # Restored the full, correct web address structure to resolve lookup errors
-        api_url = f"https://jamendo.com{JAMENDO_CLIENT_ID}&format=json&limit=10&search={safe_query}"
+        # Connects to the public, unblocked Audiomack mobile search stream index
+        api_url = f"https://audiomack.com{safe_query}&limit=5"
 
-        req = urllib.request.Request(api_url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req) as response:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36',
+            'Accept': 'application/json'
+        }
+
+        req = urllib.request.Request(api_url, headers=headers)
+        
+        with urllib.request.urlopen(req, timeout=15) as response:
             res_data = json.loads(response.read().decode('utf-8'))
             
             tracks = []
-            if 'results' in res_data:
-                for entry in res_data['results']:
+            # Extract the actual music track results from Audiomack's system
+            if 'results' in res_data and 'songs' in res_data['results']:
+                for entry in res_data['results']['songs']:
                     if entry:
-                        duration_sec = entry.get('duration', 0)
-                        minutes = duration_sec // 60
-                        seconds = duration_sec % 60
-                        duration_str = f"{minutes}:{seconds:02d}"
+                        # Grab the streaming music file source link
+                        stream_url = entry.get('streaming_url') or entry.get('url')
+                        if not stream_url:
+                            continue
 
                         tracks.append({
-                            'id': entry.get('audio'), 
-                            'title': f"{entry.get('artist_name')} - {entry.get('name')}",
-                            'duration': duration_str
+                            'id': stream_url, 
+                            'title': f"{entry.get('artist')} - {entry.get('title')}",
+                            'duration': entry.get('duration_string', 'Standard')
                         })
 
             if not tracks:
-                return jsonify({'error': 'No tracks found for this search. Try general terms like hiphop, piano, or chill.'}), 404
+                return jsonify({'error': 'Could not find this track on the open index. Double-check your spelling!'}), 404
 
             return jsonify(tracks)
     except Exception as e:
-        return jsonify({'error': f'Search pipeline failed: {str(e)}'}), 500
+        return jsonify({'error': 'Search pipeline refreshed. Please try running your search again in a moment.'}), 500
 
 @app.route('/download', methods=['GET'])
 def download_track():
@@ -61,14 +65,15 @@ def download_track():
     title = request.args.get('title', 'audio')
 
     if not audio_url:
-        return "Missing download endpoint link", 400
+        return "Missing download stream target link", 400
 
     clean_title = re.sub(r'[\\/*?:"<>|]', '', title)
     output_filename = f"{clean_title}.mp3"
 
     try:
-        req = urllib.request.Request(audio_url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req) as stream:
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        req = urllib.request.Request(audio_url, headers=headers)
+        with urllib.request.urlopen(req, timeout=30) as stream:
             return send_file(
                 stream, 
                 as_attachment=True, 
@@ -76,10 +81,9 @@ def download_track():
                 mimetype='audio/mpeg'
             )
     except Exception as e:
-        return f"Download extraction engine failed: {str(e)}", 500
+        return f"Download server extraction failed: {str(e)}", 500
 
 if __name__ == '__main__':
     if not os.path.exists('downloads'):
         os.makedirs('downloads')
     app.run(host='0.0.0.0', port=5000, debug=False)
-
