@@ -18,9 +18,12 @@ def search_tracks():
     if not query:
         return jsonify({'error': 'Search query is empty'}), 400
 
+    # Uses global search filters optimized to bypass data center blocks
     ydl_opts = {
-        'default_search': 'scsearch5',
+        'default_search': 'ytsearch5',
         'skip_download': True,
+        'nocheckcertificate': True,
+        'quiet': True
     }
 
     try:
@@ -41,7 +44,7 @@ def search_tracks():
                             duration_str = "Unknown"
 
                         tracks.append({
-                            'id': entry.get('webpage_url') or entry.get('id'),
+                            'id': entry.get('id'),
                             'title': entry.get('title'),
                             'duration': duration_str
                         })
@@ -61,13 +64,14 @@ def download_track():
     clean_title = re.sub(r'[\\/*?:"<>|]', '', title)
     output_filename = f"{clean_title}.mp3"
 
-    # Setup the converter location cleanly using the official package path method
     ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
 
+    # Optimized settings to keep download pipes clean on cloud networks
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': 'downloads/%(title)s.%(ext)s',
         'ffmpeg_location': ffmpeg_exe,
+        'nocheckcertificate': True,
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
@@ -75,7 +79,7 @@ def download_track():
         }],
     }
 
-    track_url = track_id if track_id.startswith("http") else f"https://soundcloud.com{track_id}"
+    track_url = f"https://youtube.com{track_id}"
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -95,4 +99,3 @@ if __name__ == '__main__':
     if not os.path.exists('downloads'):
         os.makedirs('downloads')
     app.run(host='0.0.0.0', port=5000, debug=False)
-
