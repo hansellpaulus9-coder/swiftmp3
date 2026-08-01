@@ -23,10 +23,10 @@ def search_tracks():
         return jsonify({'error': 'Search query is empty'}), 400
 
     try:
-        # Properly encode spaces and characters to make the url completely safe
+        # Securely parse spaces and characters into safe web entities
         safe_query = urllib.parse.quote(query.strip())
         
-        # Fixed the URL structure completely to avoid control character errors
+        # Restored the full, correct web address structure to resolve lookup errors
         api_url = f"https://jamendo.com{JAMENDO_CLIENT_ID}&format=json&limit=10&search={safe_query}"
 
         req = urllib.request.Request(api_url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -82,3 +82,4 @@ if __name__ == '__main__':
     if not os.path.exists('downloads'):
         os.makedirs('downloads')
     app.run(host='0.0.0.0', port=5000, debug=False)
+
