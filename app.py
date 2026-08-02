@@ -117,7 +117,10 @@ def search_tracks():
         if not tracks:
             return jsonify({'error': 'No public preview tracks were available for that query.'}), 404
 
-        return jsonify(tracks)
+        return jsonify({
+            'preview_only': True,
+            'tracks': tracks
+        })
     except Exception:
         return jsonify({'error': 'The public music catalog is temporarily unavailable. Please refresh and try again.'}), 500
 

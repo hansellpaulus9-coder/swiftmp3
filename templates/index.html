@@ -24,7 +24,7 @@
 
   <div class="container">
     <h1>FastMP3</h1>
-    <p>Search the public music catalog and open the audio file directly.</p>
+    <p>Search the public music catalog and open a public preview link directly.</p>
 
     <div class="search-box">
       <input id="query" type="text" placeholder="Enter song name or artist" />
@@ -54,18 +54,18 @@
       document.getElementById('loading').style.display = 'none';
 
       if (data.error) return alert(data.error);
-      if (!data.length) return alert('No results found.');
+      if (!data.preview_only || !data.tracks?.length) return alert('No results found.');
 
       const results = document.getElementById('results');
-      data.forEach(track => {
+      data.tracks.forEach(track => {
         const div = document.createElement('div');
         div.className = 'track';
         div.innerHTML = `
           <div>
             <strong>${track.title}</strong><br>
-            <span class="small">Duration: ${track.duration}</span>
+            <span class="small">Public preview • ${track.duration}</span>
           </div>
-          <button class="download-btn" onclick="window.location.href='/download?id=${encodeURIComponent(track.id)}&title=${encodeURIComponent(track.title)}'">Download MP3</button>
+          <button class="download-btn" onclick="window.location.href='/download?id=${encodeURIComponent(track.id)}&title=${encodeURIComponent(track.title)}'">Open Preview</button>
         `;
         results.appendChild(div);
       });
