@@ -1,7 +1,8 @@
-from flask import Flask, request, jsonify, render_template, redirect
+from flask import Flask, request, jsonify, render_template, redirect, Response
 import urllib.parse
 import os
 import requests
+import re
 
 app = Flask(__name__, template_folder='templates')
 SAFE_PREVIEW_HOSTS = {
@@ -20,6 +21,12 @@ def is_supported_preview_url(audio_url):
     if host in SAFE_PREVIEW_HOSTS:
         return True
     return host.endswith('.dzcdn.net') or host.endswith('.apple.com')
+
+
+def clean_filename(value):
+    safe = re.sub(r'[^a-zA-Z0-9 _-]+', '', value or 'preview')
+    safe = safe.strip().replace(' ', '_')
+    return safe or 'preview'
 
 
 def format_duration(track_time_ms):
@@ -128,6 +135,7 @@ def search_tracks():
 @app.route('/download', methods=['GET'])
 def download_track():
     audio_url = (request.args.get('id') or '').strip()
+    title = request.args.get('title', 'preview')
 
     if not audio_url:
         return "Missing file target link", 400
@@ -136,7 +144,20 @@ def download_track():
         return "This media link is not a supported public preview URL.", 400
 
     try:
-        return redirect(audio_url, code=307)
+        remote = requests.get(audio_url, timeout=30, stream=True, headers={'User-Agent': 'Mozilla/5.0'})
+        remote.raise_for_status()
+
+        content_type = remote.headers.get('Content-Type', 'audio/aac')
+        filename = f"{clean_filename(title)}_preview.m4a"
+
+        return Response(
+            remote.iter_content(chunk_size=8192),
+            content_type=content_type,
+            headers={
+                'Content-Disposition': f'attachment; filename="{filename}"',
+                'Cache-Control': 'no-store'
+            }
+        )
     except Exception:
         return "Download request failed.", 500
 
