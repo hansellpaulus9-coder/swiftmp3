@@ -2,13 +2,13 @@ SwiftMP3 - Simple Music Downloader
 
 Overview
 
-This is a lightweight Flask app that searches YouTube and allows downloading audio as MP3 using `yt-dlp` and `ffmpeg`.
+This is a lightweight Flask app that searches a public music catalog and links the audio preview download directly from the browser.
 
 Files
 
-- `app.py` - Main Flask application (serves `index.html`, `/search`, `/download`).
-- `index.html` - Frontend UI in project root.
-- `downloads/` - Output folder for generated MP3 files.
+- `app.py` - Main Flask application (serves the UI and the `/search` and `/download` routes).
+- `templates/index.html` - Frontend UI.
+- `downloads/` - Optional local output folder for any downloaded files.
 
 Setup
 
@@ -27,8 +27,6 @@ source venv/bin/activate       # macOS / Linux
 pip install -r requirements.txt
 ```
 
-3. Install FFmpeg and ensure `ffmpeg` is available on your PATH.
-
 Run
 
 ```bash
@@ -39,5 +37,5 @@ Open http://127.0.0.1:5000/ in your browser.
 
 Notes
 
-- `yt-dlp` downloads YouTube content; ensure you comply with YouTube's Terms of Service.
-- If downloads fail during audio extraction, verify FFmpeg is installed.
+- The app now uses the public iTunes search API, which avoids the old YouTube download workflow.
+- Render should work as a simple Gunicorn Flask deployment without any FFmpeg requirement.

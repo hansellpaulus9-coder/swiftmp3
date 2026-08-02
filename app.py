@@ -1,80 +1,142 @@
-from flask import Flask, request, jsonify, send_file, render_template
-import urllib.request
+from flask import Flask, request, jsonify, render_template, redirect
 import urllib.parse
-import json
 import os
-import re
+import requests
 
 app = Flask(__name__, template_folder='templates')
+SAFE_PREVIEW_HOSTS = {
+    'audio-ssl.itunes.apple.com',
+    'aod.itunes.apple.com',
+    'itunes.apple.com',
+    'cdnt-preview.dzcdn.net'
+}
+
+
+def is_supported_preview_url(audio_url):
+    parsed = urllib.parse.urlparse(audio_url)
+    host = parsed.netloc.lower()
+    if parsed.scheme not in ('http', 'https'):
+        return False
+    if host in SAFE_PREVIEW_HOSTS:
+        return True
+    return host.endswith('.dzcdn.net') or host.endswith('.apple.com')
+
+
+def format_duration(track_time_ms):
+    if not track_time_ms:
+        return '3:00'
+
+    numeric_value = int(track_time_ms)
+    is_seconds = numeric_value < 60000
+    total_seconds = max(numeric_value // 1000, 0) if not is_seconds else max(numeric_value, 0)
+    minutes, seconds = divmod(total_seconds, 60)
+    return f"{minutes}:{seconds:02d}"
+
+
+def itunes_search(query):
+    safe_query = urllib.parse.quote(query.strip())
+    api_url = f"https://itunes.apple.com/search?term={safe_query}&media=music&entity=song&limit=10"
+
+    response = requests.get(api_url, timeout=15, headers={'User-Agent': 'Mozilla/5.0'})
+    response.raise_for_status()
+    res_data = response.json()
+
+    tracks = []
+    for entry in res_data.get('results', []):
+        preview_url = (entry.get('previewUrl') or '').strip()
+        if not preview_url or not is_supported_preview_url(preview_url):
+            continue
+
+        title = f"{entry.get('artistName', 'Unknown Artist')} - {entry.get('trackName', 'Unknown Track')}"
+        tracks.append({
+            'id': preview_url,
+            'title': title,
+            'duration': format_duration(entry.get('trackTimeMillis'))
+        })
+    return tracks
+
+
+def deezer_search(query):
+    safe_query = urllib.parse.quote(query.strip())
+    api_url = f"https://api.deezer.com/search/track?q={safe_query}"
+
+    response = requests.get(api_url, timeout=15, headers={'User-Agent': 'Mozilla/5.0'})
+    response.raise_for_status()
+    res_data = response.json()
+
+    tracks = []
+    for entry in res_data.get('data', []):
+        preview_url = (entry.get('preview') or '').strip()
+        if not preview_url or not is_supported_preview_url(preview_url):
+            continue
+
+        artist_name = (entry.get('artist') or {}).get('name', 'Unknown Artist')
+        title = f"{artist_name} - {entry.get('title', 'Unknown Track')}"
+        tracks.append({
+            'id': preview_url,
+            'title': title,
+            'duration': format_duration(entry.get('duration') * 1000)
+        })
+    return tracks
+
 
 @app.route('/')
 def home():
     return render_template('index.html')
 
+
 @app.route('/search', methods=['POST'])
 def search_tracks():
     data = request.get_json()
-    query = data.get('query', '')
+    query = (data or {}).get('query', '')
 
     if not query:
         return jsonify({'error': 'Search query is empty'}), 400
 
+    normalized_query = query.strip()
+    if not normalized_query:
+        return jsonify({'error': 'Search query is empty'}), 400
+
     try:
-        # Clean up the search string spaces for a smooth URL link
-        safe_query = urllib.parse.quote(query.strip())
-        
-        # Open public music search mirror - 100% unrestricted access for cloud applications
-        api_url = f"https://freemusicarchive.org{safe_query}&limit=10"
+        tracks = []
+        seen_ids = set()
 
-        req = urllib.request.Request(api_url, headers={'User-Agent': 'Mozilla/5.0'})
-        
-        with urllib.request.urlopen(req, timeout=15) as response:
-            res_data = json.loads(response.read().decode('utf-8'))
-            
-            tracks = []
-            if 'aTracks' in res_data:
-                for entry in res_data['aTracks']:
-                    if entry:
-                        # Capture the high-speed direct MP3 file download line
-                        download_url = entry.get('track_file_url')
-                        if not download_url:
-                            continue
+        for provider in (itunes_search, deezer_search):
+            for track in provider(normalized_query):
+                track_id = track['id']
+                if track_id in seen_ids:
+                    continue
+                seen_ids.add(track_id)
+                tracks.append(track)
 
-                        tracks.append({
-                            'id': download_url, 
-                            'title': f"{entry.get('artist_name')} - {entry.get('track_title')}",
-                            'duration': entry.get('track_duration', '3:00')
-                        })
+                if len(tracks) >= 10:
+                    break
+            if len(tracks) >= 10:
+                break
 
-            if not tracks:
-                return jsonify({'error': 'No tracks found matching your query on the open public network.'}), 404
+        if not tracks:
+            return jsonify({'error': 'No public preview tracks were available for that query.'}), 404
 
-            return jsonify(tracks)
-    except Exception as e:
-        return jsonify({'error': 'The network path is adjusting. Please refresh and try your search again.'}), 500
+        return jsonify(tracks)
+    except Exception:
+        return jsonify({'error': 'The public music catalog is temporarily unavailable. Please refresh and try again.'}), 500
+
 
 @app.route('/download', methods=['GET'])
 def download_track():
-    audio_url = request.args.get('id')
-    title = request.args.get('title', 'audio')
+    audio_url = (request.args.get('id') or '').strip()
 
     if not audio_url:
         return "Missing file target link", 400
 
-    clean_title = re.sub(r'[\\/*?:"<>|]', '', title)
-    output_filename = f"{clean_title}.mp3"
+    if not is_supported_preview_url(audio_url):
+        return "This media link is not a supported public preview URL.", 400
 
     try:
-        req = urllib.request.Request(audio_url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=30) as stream:
-            return send_file(
-                stream, 
-                as_attachment=True, 
-                download_name=output_filename, 
-                mimetype='audio/mpeg'
-            )
-    except Exception as e:
-        return f"Download server extraction failed: {str(e)}", 500
+        return redirect(audio_url, code=307)
+    except Exception:
+        return "Download request failed.", 500
+
 
 if __name__ == '__main__':
     if not os.path.exists('downloads'):

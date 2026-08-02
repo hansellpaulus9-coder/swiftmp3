@@ -24,7 +24,7 @@
 
   <div class="container">
     <h1>FastMP3</h1>
-    <p>Search YouTube and download MP3 audio quickly.</p>
+    <p>Search the public music catalog and open the audio file directly.</p>
 
     <div class="search-box">
       <input id="query" type="text" placeholder="Enter song name or artist" />
@@ -65,7 +65,7 @@
             <strong>${track.title}</strong><br>
             <span class="small">Duration: ${track.duration}</span>
           </div>
-          <button class="download-btn" onclick="window.location.href='/download?id=${track.id}&title=${encodeURIComponent(track.title)}'">Download MP3</button>
+          <button class="download-btn" onclick="window.location.href='/download?id=${encodeURIComponent(track.id)}&title=${encodeURIComponent(track.title)}'">Download MP3</button>
         `;
         results.appendChild(div);
       });
