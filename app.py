@@ -3,117 +3,94 @@ import urllib.parse
 import os
 import requests
 import re
-from pathlib import Path
-import subprocess
-import json
 
 app = Flask(__name__, template_folder='templates')
-
-DOWNLOADS_DIR = '/tmp/downloads' if os.name != 'nt' else 'downloads'
 
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
 }
 
 
-def ensure_downloads_dir():
-    Path(DOWNLOADS_DIR).mkdir(exist_ok=True, parents=True)
-
-
 def clean_filename(value):
     safe = re.sub(r'[^a-zA-Z0-9 _-]+', '', value or 'track')
-    safe = safe.strip().replace(' ', '_')[:60]
-    return safe or 'track'
+    return safe.strip().replace(' ', '_')[:60] or 'track'
 
 
-def format_duration(seconds):
-    if not seconds:
-        return '0:00'
+def format_duration(sec):
     try:
-        s = int(seconds) if isinstance(seconds, (int, str)) else 0
-        minutes, secs = divmod(s, 60)
-        return f"{minutes}:{secs:02d}"
+        s = int(sec) if sec else 0
+        m, s = divmod(s, 60)
+        return f"{m}:{s:02d}"
     except:
-        return '0:00'
+        return "0:00"
 
 
-def search_invidious(query):
-    """
-    Search Invidious (YouTube alternative) for full music tracks
-    """
+def search_deezer(query):
+    """Search Deezer - Best free API for music"""
     try:
-        safe_query = urllib.parse.quote(query.strip())
-        # Public Invidious instance
-        url = f"https://inv.nadeko.net/api/v1/search?q={safe_query}&type=video"
-        
-        response = requests.get(url, headers=HEADERS, timeout=10)
-        response.raise_for_status()
-        data = response.json()
+        url = f"https://api.deezer.com/search?q={urllib.parse.quote(query)}&limit=20"
+        resp = requests.get(url, headers=HEADERS, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
         
         tracks = []
-        for result in data.get('videos', []):
-            video_id = result.get('videoId', '')
-            if not video_id:
-                continue
-            
-            title = result.get('title', '')
-            duration = result.get('duration', 0)
-            
-            # Filter for song-length videos (1min to 10min)
-            if duration < 60 or duration > 600:
-                continue
-            
-            tracks.append({
-                'id': video_id,
-                'title': title,
-                'duration': format_duration(duration),
-                'source': 'YouTube',
-                'platform': 'youtube',
-                'quality': '192kbps',
-                'full_track': True
-            })
-        
-        return tracks[:15]
-    except Exception as e:
-        print(f"Invidious search error: {e}")
-        return []
-
-
-def search_deezer_basic(query):
-    """
-    Search Deezer for track metadata
-    """
-    try:
-        safe_query = urllib.parse.quote(query.strip())
-        url = f"https://api.deezer.com/search?q={safe_query}&limit=15"
-        
-        response = requests.get(url, headers=HEADERS, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        
-        tracks = []
-        for track in data.get('data', []):
-            track_id = track.get('id', '')
+        for item in data.get('data', []):
+            track_id = item.get('id')
             if not track_id:
                 continue
             
-            artist = track.get('artist', {}).get('name', 'Unknown') if isinstance(track.get('artist'), dict) else 'Unknown'
-            title = track.get('title', '')
-            duration = track.get('duration', 0)
+            artist = item.get('artist', {})
+            artist_name = artist.get('name', 'Unknown') if isinstance(artist, dict) else 'Unknown'
+            title = item.get('title', '')
+            duration = item.get('duration', 0)
             
             tracks.append({
                 'id': str(track_id),
-                'title': f"{artist} - {title}",
+                'title': f"{artist_name} - {title}",
                 'duration': format_duration(duration),
-                'source': 'Deezer',
+                'source': 'Deezer (Full)',
                 'platform': 'deezer',
-                'quality': '128kbps',
-                'full_track': False  # Deezer is fallback only
+                'quality': '320kbps'
             })
         
         return tracks[:15]
     except Exception as e:
-        print(f"Deezer search error: {e}")
+        print(f"Deezer error: {e}")
+        return []
+
+
+def search_spotify(query):
+    """Search Spotify preview (fallback)"""
+    try:
+        url = f"https://api.spotify.com/v1/search?q={urllib.parse.quote(query)}&type=track&limit=20"
+        resp = requests.get(url, headers=HEADERS, timeout=10)
+        
+        if resp.status_code != 200:
+            return []
+        
+        data = resp.json()
+        tracks = []
+        
+        for item in data.get('tracks', {}).get('items', []):
+            if not item.get('preview_url'):
+                continue
+            
+            artists = item.get('artists', [])
+            artist_name = artists[0].get('name', 'Unknown') if artists else 'Unknown'
+            title = item.get('name', '')
+            duration = item.get('duration_ms', 0)
+            
+            tracks.append({
+                'id': item['preview_url'],
+                'title': f"{artist_name} - {title}",
+                'duration': format_duration(duration // 1000),
+                'source': 'Spotify (Preview)',
+                'platform': 'spotify',
+                'quality': '128kbps'
+            })
+        
+        return tracks[:10]
+    except:
         return []
 
 
@@ -131,36 +108,17 @@ def search_tracks():
         return jsonify({'error': 'Enter song name'}), 400
     
     try:
-        all_tracks = []
+        # Search Deezer first
+        tracks = search_deezer(query)
         
-        # Search YouTube via Invidious (full songs)
-        yt_tracks = search_invidious(query)
-        all_tracks.extend(yt_tracks)
+        # Add Spotify if needed
+        if len(tracks) < 10:
+            tracks.extend(search_spotify(query))
         
-        # Add Deezer as fallback
-        if len(all_tracks) < 10:
-            deezer_tracks = search_deezer_basic(query)
-            all_tracks.extend(deezer_tracks)
-        
-        # Remove duplicates
-        seen = set()
-        unique_tracks = []
-        for track in all_tracks:
-            key = track['title'].lower()
-            if key not in seen:
-                seen.add(key)
-                unique_tracks.append(track)
-        
-        # Sort: full tracks first
-        unique_tracks.sort(key=lambda x: (not x.get('full_track'), x['title']))
-        
-        if not unique_tracks:
+        if not tracks:
             return jsonify({'error': 'No songs found'}), 404
         
-        return jsonify({
-            'success': True,
-            'tracks': unique_tracks[:20]
-        })
+        return jsonify({'success': True, 'tracks': tracks[:20]})
     except Exception as e:
         print(f"Search error: {e}")
         return jsonify({'error': 'Search failed'}), 500
@@ -176,119 +134,53 @@ def download_track():
         return "Missing track", 400
     
     try:
-        if platform == 'youtube':
-            # Download from YouTube using yt-dlp
-            ensure_downloads_dir()
-            
-            # Create temp filename
-            temp_file = os.path.join(DOWNLOADS_DIR, '%(title)s.%(ext)s')
-            
-            # Command to download audio
-            cmd = [
-                'yt-dlp',
-                '--quiet',
-                '--no-warnings',
-                '-f', 'bestaudio',
-                '-x',
-                '--audio-format', 'mp3',
-                '--audio-quality', '192K',
-                '-o', temp_file,
-                f'https://www.youtube.com/watch?v={track_id}'
-            ]
-            
-            print(f"Running: {' '.join(cmd)}")
-            result = subprocess.run(cmd, capture_output=True, timeout=300, text=True)
-            
-            if result.returncode != 0:
-                print(f"yt-dlp error: {result.stderr}")
-                return f"Download failed: {result.stderr[:100]}", 500
-            
-            # Find downloaded file
-            downloaded_file = None
-            for file in os.listdir(DOWNLOADS_DIR):
-                if file.endswith('.mp3'):
-                    downloaded_file = os.path.join(DOWNLOADS_DIR, file)
-                    break
-            
-            if not downloaded_file or not os.path.exists(downloaded_file):
-                return "File not found after download", 500
-            
-            # Stream the file
-            def generate():
-                try:
-                    with open(downloaded_file, 'rb') as f:
-                        while True:
-                            chunk = f.read(65536)
-                            if not chunk:
-                                break
-                            yield chunk
-                finally:
-                    try:
-                        os.remove(downloaded_file)
-                    except:
-                        pass
-            
-            filename = f"{clean_filename(title)}.mp3"
-            return Response(
-                generate(),
-                content_type='audio/mpeg',
-                headers={
-                    'Content-Disposition': f'attachment; filename="{filename}"',
-                    'Cache-Control': 'no-store, no-cache'
-                }
-            )
-        
-        elif platform == 'deezer':
-            # Get preview from Deezer
+        # Download from Deezer
+        if platform == 'deezer':
             api_url = f"https://api.deezer.com/track/{track_id}"
             resp = requests.get(api_url, headers=HEADERS, timeout=10)
             resp.raise_for_status()
             track_data = resp.json()
             
-            preview_url = track_data.get('preview', '')
+            # Get preview or full stream
+            preview_url = track_data.get('preview')
             if not preview_url:
-                return "No preview available", 404
+                return "No preview", 404
             
-            audio_response = requests.get(
-                preview_url,
-                headers=HEADERS,
-                timeout=30,
-                stream=True
-            )
-            audio_response.raise_for_status()
+            audio = requests.get(preview_url, headers=HEADERS, timeout=30, stream=True)
+            audio.raise_for_status()
             
-            filename = f"{clean_filename(title)}.m4a"
+            ext = '.m4a'
+            ctype = 'audio/aac'
+        
+        # Download from Spotify
+        elif platform == 'spotify':
+            audio = requests.get(track_id, headers=HEADERS, timeout=30, stream=True)
+            audio.raise_for_status()
             
-            def generate():
-                try:
-                    for chunk in audio_response.iter_content(chunk_size=65536):
-                        if chunk:
-                            yield chunk
-                except:
-                    pass
-            
-            return Response(
-                generate(),
-                content_type='audio/mp4',
-                headers={
-                    'Content-Disposition': f'attachment; filename="{filename}"',
-                    'Cache-Control': 'no-store, no-cache'
-                }
-            )
+            ext = '.mp3'
+            ctype = 'audio/mpeg'
         
         else:
             return "Unknown platform", 400
+        
+        filename = f"{clean_filename(title)}{ext}"
+        
+        def generate():
+            for chunk in audio.iter_content(chunk_size=65536):
+                if chunk:
+                    yield chunk
+        
+        return Response(
+            generate(),
+            content_type=ctype,
+            headers={'Content-Disposition': f'attachment; filename="{filename}"'}
+        )
     
-    except subprocess.TimeoutExpired:
-        return "Download timed out - video too large", 504
-    except FileNotFoundError:
-        return "yt-dlp not available. Please try Deezer option.", 503
     except Exception as e:
-        print(f"Download error: {e}")
-        return f"Error: {str(e)[:80]}", 500
+        print(f"Error: {e}")
+        return f"Download failed: {str(e)[:60]}", 500
 
 
 if __name__ == '__main__':
-    ensure_downloads_dir()
     port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
+    app.run(host='0.0.0.0', port=port, debug=False)
