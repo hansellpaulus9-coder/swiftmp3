@@ -4,7 +4,8 @@ import os
 import requests
 import re
 from pathlib import Path
-import time
+import subprocess
+import json
 
 app = Flask(__name__, template_folder='templates')
 
@@ -12,8 +13,6 @@ DOWNLOADS_DIR = '/tmp/downloads' if os.name != 'nt' else 'downloads'
 
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-    'Accept': '*/*',
-    'Referer': 'https://tubidy.cc/'
 }
 
 
@@ -38,100 +37,55 @@ def format_duration(seconds):
         return '0:00'
 
 
-def search_musify(query):
+def search_invidious(query):
     """
-    Search Musify API - has full MP3 downloads
+    Search Invidious (YouTube alternative) for full music tracks
     """
     try:
         safe_query = urllib.parse.quote(query.strip())
-        # Musify API endpoint
-        url = f"https://api.musify.club/search?q={safe_query}&type=tracks&limit=20"
+        # Public Invidious instance
+        url = f"https://inv.nadeko.net/api/v1/search?q={safe_query}&type=video"
         
         response = requests.get(url, headers=HEADERS, timeout=10)
         response.raise_for_status()
         data = response.json()
         
         tracks = []
-        for track in data.get('data', []):
-            track_id = track.get('id', '')
-            if not track_id:
+        for result in data.get('videos', []):
+            video_id = result.get('videoId', '')
+            if not video_id:
                 continue
             
-            title = track.get('title', '')
-            artist = track.get('artist', '')
-            if isinstance(artist, dict):
-                artist = artist.get('name', 'Unknown')
+            title = result.get('title', '')
+            duration = result.get('duration', 0)
             
-            duration = track.get('duration', 0)
-            download_url = track.get('url', '')
-            
-            if not download_url or not download_url.startswith('http'):
+            # Filter for song-length videos (1min to 10min)
+            if duration < 60 or duration > 600:
                 continue
             
             tracks.append({
-                'id': download_url,
-                'title': f"{artist} - {title}",
+                'id': video_id,
+                'title': title,
                 'duration': format_duration(duration),
-                'source': 'Musify',
-                'platform': 'musify',
-                'quality': '320kbps',
-                'full_track': True
-            })
-        
-        return tracks[:15]
-    except Exception as e:
-        print(f"Musify search error: {e}")
-        return []
-
-
-def search_audiotube(query):
-    """
-    Search AudioTube API - has MP3 downloads
-    """
-    try:
-        safe_query = urllib.parse.quote(query.strip())
-        url = f"https://audiotube.blueemedia.eu/search?q={safe_query}&type=track"
-        
-        response = requests.get(url, headers=HEADERS, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        
-        tracks = []
-        for track in data.get('results', []):
-            track_id = track.get('id', '')
-            if not track_id:
-                continue
-            
-            title = track.get('name', '')
-            artist = track.get('artist', '')
-            if isinstance(artist, dict):
-                artist = artist.get('name', 'Unknown')
-            
-            duration = track.get('duration', 0)
-            
-            tracks.append({
-                'id': track_id,
-                'title': f"{artist} - {title}",
-                'duration': format_duration(duration),
-                'source': 'AudioTube',
-                'platform': 'audiotube',
+                'source': 'YouTube',
+                'platform': 'youtube',
                 'quality': '192kbps',
                 'full_track': True
             })
         
         return tracks[:15]
     except Exception as e:
-        print(f"AudioTube search error: {e}")
+        print(f"Invidious search error: {e}")
         return []
 
 
-def search_deezer_preview(query):
+def search_deezer_basic(query):
     """
-    Fallback: Deezer previews (30 seconds)
+    Search Deezer for track metadata
     """
     try:
         safe_query = urllib.parse.quote(query.strip())
-        url = f"https://api.deezer.com/search?q={safe_query}&limit=10"
+        url = f"https://api.deezer.com/search?q={safe_query}&limit=15"
         
         response = requests.get(url, headers=HEADERS, timeout=10)
         response.raise_for_status()
@@ -139,8 +93,8 @@ def search_deezer_preview(query):
         
         tracks = []
         for track in data.get('data', []):
-            preview = track.get('preview', '')
-            if not preview or not preview.startswith('http'):
+            track_id = track.get('id', '')
+            if not track_id:
                 continue
             
             artist = track.get('artist', {}).get('name', 'Unknown') if isinstance(track.get('artist'), dict) else 'Unknown'
@@ -148,16 +102,16 @@ def search_deezer_preview(query):
             duration = track.get('duration', 0)
             
             tracks.append({
-                'id': preview,
+                'id': str(track_id),
                 'title': f"{artist} - {title}",
                 'duration': format_duration(duration),
-                'source': 'Deezer Preview (30s)',
-                'platform': 'preview',
+                'source': 'Deezer',
+                'platform': 'deezer',
                 'quality': '128kbps',
-                'full_track': False
+                'full_track': False  # Deezer is fallback only
             })
         
-        return tracks[:10]
+        return tracks[:15]
     except Exception as e:
         print(f"Deezer search error: {e}")
         return []
@@ -179,18 +133,13 @@ def search_tracks():
     try:
         all_tracks = []
         
-        # Try Musify first (usually most reliable)
-        musify_tracks = search_musify(query)
-        all_tracks.extend(musify_tracks)
+        # Search YouTube via Invidious (full songs)
+        yt_tracks = search_invidious(query)
+        all_tracks.extend(yt_tracks)
         
-        # Try AudioTube
-        if len(all_tracks) < 8:
-            audio_tracks = search_audiotube(query)
-            all_tracks.extend(audio_tracks)
-        
-        # Add Deezer previews as fallback
-        if len(all_tracks) < 15:
-            deezer_tracks = search_deezer_preview(query)
+        # Add Deezer as fallback
+        if len(all_tracks) < 10:
+            deezer_tracks = search_deezer_basic(query)
             all_tracks.extend(deezer_tracks)
         
         # Remove duplicates
@@ -214,7 +163,7 @@ def search_tracks():
         })
     except Exception as e:
         print(f"Search error: {e}")
-        return jsonify({'error': f'Error: {str(e)[:50]}'}), 500
+        return jsonify({'error': 'Search failed'}), 500
 
 
 @app.route('/download', methods=['GET'])
@@ -227,111 +176,116 @@ def download_track():
         return "Missing track", 400
     
     try:
-        audio_response = None
-        content_type = 'audio/mpeg'
-        extension = '.mp3'
-        download_url = track_id
-        
-        # For Musify, download_url is already in track_id
-        if platform == 'musify':
-            if not track_id.startswith('http'):
-                return "Invalid URL", 400
-            audio_response = requests.get(
-                track_id,
-                headers=HEADERS,
-                timeout=120,
-                stream=True,
-                allow_redirects=True
+        if platform == 'youtube':
+            # Download from YouTube using yt-dlp
+            ensure_downloads_dir()
+            
+            # Create temp filename
+            temp_file = os.path.join(DOWNLOADS_DIR, '%(title)s.%(ext)s')
+            
+            # Command to download audio
+            cmd = [
+                'yt-dlp',
+                '--quiet',
+                '--no-warnings',
+                '-f', 'bestaudio',
+                '-x',
+                '--audio-format', 'mp3',
+                '--audio-quality', '192K',
+                '-o', temp_file,
+                f'https://www.youtube.com/watch?v={track_id}'
+            ]
+            
+            print(f"Running: {' '.join(cmd)}")
+            result = subprocess.run(cmd, capture_output=True, timeout=300, text=True)
+            
+            if result.returncode != 0:
+                print(f"yt-dlp error: {result.stderr}")
+                return f"Download failed: {result.stderr[:100]}", 500
+            
+            # Find downloaded file
+            downloaded_file = None
+            for file in os.listdir(DOWNLOADS_DIR):
+                if file.endswith('.mp3'):
+                    downloaded_file = os.path.join(DOWNLOADS_DIR, file)
+                    break
+            
+            if not downloaded_file or not os.path.exists(downloaded_file):
+                return "File not found after download", 500
+            
+            # Stream the file
+            def generate():
+                try:
+                    with open(downloaded_file, 'rb') as f:
+                        while True:
+                            chunk = f.read(65536)
+                            if not chunk:
+                                break
+                            yield chunk
+                finally:
+                    try:
+                        os.remove(downloaded_file)
+                    except:
+                        pass
+            
+            filename = f"{clean_filename(title)}.mp3"
+            return Response(
+                generate(),
+                content_type='audio/mpeg',
+                headers={
+                    'Content-Disposition': f'attachment; filename="{filename}"',
+                    'Cache-Control': 'no-store, no-cache'
+                }
             )
-            audio_response.raise_for_status()
         
-        # For AudioTube, we need to get download URL
-        elif platform == 'audiotube':
-            try:
-                url = f"https://audiotube.blueemedia.eu/track/{track_id}"
-                resp = requests.get(url, headers=HEADERS, timeout=10)
-                resp.raise_for_status()
-                track_data = resp.json()
-                
-                download_url = track_data.get('mp3', '')
-                if not download_url:
-                    # Try to extract from response
-                    download_url = track_id  # fallback
-                
-                audio_response = requests.get(
-                    download_url,
-                    headers=HEADERS,
-                    timeout=120,
-                    stream=True,
-                    allow_redirects=True
-                )
-                audio_response.raise_for_status()
-            except:
-                # If AudioTube fails, treat as preview
-                audio_response = requests.get(
-                    track_id,
-                    headers=HEADERS,
-                    timeout=30,
-                    stream=True
-                )
-                audio_response.raise_for_status()
-        
-        # For preview URLs
-        elif platform == 'preview':
+        elif platform == 'deezer':
+            # Get preview from Deezer
+            api_url = f"https://api.deezer.com/track/{track_id}"
+            resp = requests.get(api_url, headers=HEADERS, timeout=10)
+            resp.raise_for_status()
+            track_data = resp.json()
+            
+            preview_url = track_data.get('preview', '')
+            if not preview_url:
+                return "No preview available", 404
+            
             audio_response = requests.get(
-                track_id,
+                preview_url,
                 headers=HEADERS,
                 timeout=30,
-                stream=True,
-                allow_redirects=True
+                stream=True
             )
             audio_response.raise_for_status()
-            content_type = audio_response.headers.get('Content-Type', 'audio/aac')
-            if 'm4a' in content_type.lower() or 'aac' in content_type.lower():
-                extension = '.m4a'
+            
+            filename = f"{clean_filename(title)}.m4a"
+            
+            def generate():
+                try:
+                    for chunk in audio_response.iter_content(chunk_size=65536):
+                        if chunk:
+                            yield chunk
+                except:
+                    pass
+            
+            return Response(
+                generate(),
+                content_type='audio/mp4',
+                headers={
+                    'Content-Disposition': f'attachment; filename="{filename}"',
+                    'Cache-Control': 'no-store, no-cache'
+                }
+            )
         
         else:
-            # Generic download
-            audio_response = requests.get(
-                track_id,
-                headers=HEADERS,
-                timeout=120,
-                stream=True,
-                allow_redirects=True
-            )
-            audio_response.raise_for_status()
-        
-        if not audio_response:
-            return "Failed to get track", 503
-        
-        filename = f"{clean_filename(title)}{extension}"
-        
-        def generate():
-            chunk_count = 0
-            try:
-                for chunk in audio_response.iter_content(chunk_size=65536):
-                    if chunk:
-                        chunk_count += 1
-                        yield chunk
-                        # Safety check: don't stream more than 500MB
-                        if chunk_count > 8000:
-                            break
-            except Exception as e:
-                print(f"Stream error: {e}")
-        
-        return Response(
-            generate(),
-            content_type=content_type,
-            headers={
-                'Content-Disposition': f'attachment; filename="{filename}"',
-                'Cache-Control': 'no-store, no-cache',
-                'Pragma': 'no-cache'
-            }
-        )
+            return "Unknown platform", 400
     
+    except subprocess.TimeoutExpired:
+        return "Download timed out - video too large", 504
+    except FileNotFoundError:
+        return "yt-dlp not available. Please try Deezer option.", 503
     except Exception as e:
         print(f"Download error: {e}")
-        return f"Download failed: {str(e)[:80]}", 500
+        return f"Error: {str(e)[:80]}", 500
 
 
 if __name__ == '__main__':
