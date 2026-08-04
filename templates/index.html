@@ -1,75 +1,298 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FastMP3 - Free Music Downloads</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 0; background: #f4f7fb; color: #222; }
-    .top-ad { max-width: 900px; margin: 16px auto; padding: 12px; text-align: center; border: 1px dashed #90a4ae; background: #eef2f7; color: #546e7a; }
-    .container { max-width: 900px; margin: 20px auto; background: white; border-radius: 16px; padding: 24px; box-shadow: 0 8px 24px rgba(0,0,0,.08); }
-    h1 { margin-top: 0; color: #1565c0; }
-    .search-box { display: flex; gap: 10px; margin-top: 16px; }
-    input[type="text"] { flex: 1; padding: 12px; border: 1px solid #cfd8dc; border-radius: 8px; }
-    button { padding: 12px 16px; border: none; border-radius: 8px; background: #1976d2; color: white; cursor: pointer; }
-    .results { margin-top: 20px; }
-    .track { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #eceff1; }
-    .download-btn { background: #2e7d32; }
-    .loading { color: #607d8b; margin-top: 12px; }
-    .small { color: #78909c; font-size: 0.95rem; margin-top: 8px; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SwiftMP3 - Free Full Music Downloader</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+        .container {
+            max-width: 700px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            font-size: 32px;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+        .search-box {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        input[type="text"] {
+            flex: 1;
+            padding: 14px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        button {
+            padding: 14px 28px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        #loading {
+            display: none;
+            text-align: center;
+            color: #667eea;
+            padding: 20px;
+            font-weight: bold;
+        }
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #e0e0e0;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .results {
+            margin-top: 20px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .track {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            transition: background 0.2s, box-shadow 0.2s;
+        }
+        .track:hover {
+            background: #f5f5f5;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        .track-info {
+            flex: 1;
+        }
+        .track-title {
+            font-weight: bold;
+            color: #333;
+            font-size: 14px;
+            margin-bottom: 4px;
+            word-break: break-word;
+        }
+        .track-meta {
+            font-size: 12px;
+            color: #999;
+            display: flex;
+            gap: 10px;
+        }
+        .track-meta .badge {
+            background: #f0f0f0;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+        .badge.full {
+            background: #d4edda;
+            color: #155724;
+            font-weight: bold;
+        }
+        .badge.preview {
+            background: #fff3cd;
+            color: #856404;
+        }
+        .download-btn {
+            background: #28a745;
+            padding: 8px 16px;
+            font-size: 13px;
+            margin-left: 12px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .download-btn:hover {
+            background: #218838;
+        }
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid #f5c6cb;
+        }
+        .info-message {
+            background: #d1ecf1;
+            color: #0c5460;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid #bee5eb;
+            font-size: 13px;
+        }
+        .results::-webkit-scrollbar {
+            width: 8px;
+        }
+        .results::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 8px;
+        }
+        .results::-webkit-scrollbar-thumb {
+            background: #667eea;
+            border-radius: 8px;
+        }
+        .results::-webkit-scrollbar-thumb:hover {
+            background: #764ba2;
+        }
+    </style>
 </head>
 <body>
-  <div class="top-ad">ADVERTISEMENT SPACE - Put your AdSense/affiliate banner here</div>
+    <div class="container">
+        <div class="header">
+            <h1>🎵 SwiftMP3</h1>
+            <p>Download full songs instantly</p>
+        </div>
 
-  <div class="container">
-    <h1>FastMP3</h1>
-    <p>Search the public music catalog and open a public preview link directly.</p>
+        <div class="info-message">
+            ✅ Searches JioSaavn (Full 320kbps) + iTunes + Deezer
+        </div>
 
-    <div class="search-box">
-      <input id="query" type="text" placeholder="Enter song name or artist" />
-      <button onclick="searchMusic()">Search</button>
+        <div class="search-box">
+            <input type="text" id="searchQuery" placeholder="Song name or artist..." autocomplete="off">
+            <button onclick="searchMusic()">Search</button>
+        </div>
+
+        <div id="error" class="error-message" style="display: none;"></div>
+        <div id="loading">
+            <span class="spinner"></span>Searching for tracks...
+        </div>
+        <div class="results" id="resultsContainer"></div>
     </div>
 
-    <div id="loading" class="loading" style="display:none;">Searching...</div>
-    <div id="results" class="results"></div>
+    <script>
+        // Allow Enter key to search
+        document.getElementById('searchQuery').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') searchMusic();
+        });
 
-  </div>
+        function searchMusic() {
+            const query = document.getElementById('searchQuery').value.trim();
+            if (!query) {
+                showError('Please enter a song name');
+                return;
+            }
 
-  <div class="top-ad">ADVERTISEMENT SPACE - Put your AdSense/affiliate banner here</div>
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('error').style.display = 'none';
+            document.getElementById('resultsContainer').innerHTML = '';
 
-  <script>
-    async function searchMusic() {
-      const query = document.getElementById('query').value.trim();
-      if (!query) return alert('Enter a song name first.');
-      document.getElementById('loading').style.display = 'block';
-      document.getElementById('results').innerHTML = '';
+            fetch('/search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: query })
+            })
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('loading').style.display = 'none';
+                
+                if (data.error) {
+                    showError(data.error);
+                    return;
+                }
 
-      const response = await fetch('/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query })
-      });
-      const data = await response.json();
-      document.getElementById('loading').style.display = 'none';
+                if (!data.tracks || data.tracks.length === 0) {
+                    showError('No songs found. Try a different search.');
+                    return;
+                }
 
-      if (data.error) return alert(data.error);
-      if (!data.preview_only || !data.tracks?.length) return alert('No results found.');
+                displayResults(data.tracks);
+            })
+            .catch(err => {
+                document.getElementById('loading').style.display = 'none';
+                showError('Connection failed. Check your internet.');
+                console.error(err);
+            });
+        }
 
-      const results = document.getElementById('results');
-      data.tracks.forEach(track => {
-        const div = document.createElement('div');
-        div.className = 'track';
-        div.innerHTML = `
-          <div>
-            <strong>${track.title}</strong><br>
-            <span class="small">Public preview • ${track.duration}</span>
-          </div>
-          <button class="download-btn" onclick="window.location.href='/download?id=${encodeURIComponent(track.id)}&title=${encodeURIComponent(track.title)}'">Open Preview</button>
-        `;
-        results.appendChild(div);
-      });
-    }
-  </script>
+        function displayResults(tracks) {
+            const container = document.getElementById('resultsContainer');
+            tracks.forEach(track => {
+                const isFull = track.platform === 'jiosaavn';
+                const div = document.createElement('div');
+                div.className = 'track';
+                div.innerHTML = `
+                    <div class="track-info">
+                        <div class="track-title">${escapeHtml(track.title)}</div>
+                        <div class="track-meta">
+                            <span class="badge ${isFull ? 'full' : 'preview'}">
+                                ${isFull ? '✓ Full' : 'Preview'}
+                            </span>
+                            <span>${track.duration}</span>
+                            <span>${track.quality}</span>
+                        </div>
+                    </div>
+                    <button class="download-btn" onclick="downloadTrack('${escapeAttr(track.id)}', '${escapeAttr(track.title)}', '${escapeAttr(track.platform)}')">⬇ Download</button>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function downloadTrack(id, title, platform) {
+            window.location.href = `/download?id=${encodeURIComponent(id)}&title=${encodeURIComponent(title)}&platform=${encodeURIComponent(platform)}`;
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = '❌ ' + message;
+            errorDiv.style.display = 'block';
+        }
+
+        function escapeHtml(text) {
+            const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+            return text.replace(/[&<>"']/g, m => map[m]);
+        }
+
+        function escapeAttr(text) {
+            return text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        }
+    </script>
 </body>
 </html>
